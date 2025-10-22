@@ -1,27 +1,16 @@
-from rest_framework.viewsets import ModelViewSet
+from rest_framework import viewsets, permissions
 from .models import CustomUser
 from .serializers import CustomUserSerializer
 from .permissions import IsAdminUserOrOthers
 
-class CustomUserViewSet(ModelViewSet):
+class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
-    permission_classes = [IsAdminUserOrOthers]
+    serializer_class = CustomUserSerializer
 
-    def get_serializer_class(self):
-        if self.action == 'create':
-            return CustomUserSerializer
-        return CustomUserSerializer
-
-    def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-
-        token, _ = Token.objects.get_or_create(user=user)
-
-        return Response(
-            {
-                "message": "User registered successfully."
-            },
-            status=status.HTTP_201_CREATED
-        )
+    def get_permissions(self):
+        if self.action == "create":
+            return [permissions.AllowAny()]
+        elif self.action == "list":
+            return [permissions.IsAdminUser()]
+        else:
+            return [IsAdminUserOrOthers()]
