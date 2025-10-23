@@ -24,13 +24,9 @@ class CustomUserSerializer(serializers.ModelSerializer):
         return data
     
     def create(self, validated_data):
-        validated_data.pop('confirm_password')
-
-        user = CustomUser.objects.create_user(
-            first_name=validated_data['first_name'],
-            last_name=validated_data['last_name'],
-            email=validated_data['email'],
-            password=validated_data['password']
-        )
-
+        password = validated_data.pop('password', None)
+        user = CustomUser(**validated_data)
+        if password:
+            user.set_password(password)  # ✅ properly hash
+        user.save()
         return user
