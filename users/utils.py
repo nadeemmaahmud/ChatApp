@@ -11,7 +11,7 @@ def send_verification_email(user: CustomUser) -> bool:
     EmailVerificationToken.objects.filter(user=user).delete()
     token = EmailVerificationToken.objects.create(user=user)
 
-    base_url = getattr(settings, "SITE_URL", "http://127.0.0.1:8000")
+    base_url = getattr(settings, "SITE_URL", "http://127.0.0.1:8000").rstrip('/')
     verify_path = reverse("users-verify")
     verify_url = f"{base_url}{verify_path}?token={token.token}"
 

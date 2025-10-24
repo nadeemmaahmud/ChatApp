@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import ssl
 from pathlib import Path
 from datetime import timedelta
 
@@ -158,11 +159,17 @@ CHANNEL_LAYERS = {
     },
 }
 
+# Email Configuration for Gmail
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.mailtrap.io'
-EMAIL_PORT = 2525
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
 EMAIL_HOST_USER = 'nadeemmaahmud@gmail.com'
-EMAIL_HOST_PASSWORD = 'vylhypdqzlwdibms'
+EMAIL_HOST_PASSWORD = 'ckqupqhyegidybjm'
 EMAIL_USE_TLS = True
-DEFAULT_FROM_EMAIL = 'nadeemmaahmud.cse@gmail.com'
+EMAIL_USE_SSL = False
+DEFAULT_FROM_EMAIL = 'nadeemmaahmud@gmail.com'
+
+# Console fallback (uncomment if Gmail still fails)
+# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+# DEFAULT_FROM_EMAIL = 'nadeemmaahmud@gmail.com'
 SITE_URL = "http://127.0.0.1:8000"
