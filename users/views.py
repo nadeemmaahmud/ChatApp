@@ -6,6 +6,8 @@ from .models import CustomUser, EmailVerificationToken
 from .serializers import CustomUserSerializer
 from .permissions import IsAdminUserOrOthers
 from .utils import send_verification_email
+from django.contrib.auth import authenticate
+from rest_framework_simplejwt.tokens import RefreshToken
 
 class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
@@ -22,6 +24,40 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         else:
             return [IsAdminUserOrOthers()]
+        
+    @action(detail=False, methods=["post"], url_path="login")
+    def login(self, request):
+        email = request.data.get('email')
+        password = request.data.get('password')
+        
+        if not email or not password:
+            return Response(
+                {"detail": "Email and password are required"}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        user = authenticate(request, username=email, password=password)
+        
+        if not user:
+            return Response(
+                {"detail": "Invalid credentials"}, 
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        
+        '''if not user.is_verified:
+            return Response(
+                {"detail": "Account not verified"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )'''
+        
+        refresh = RefreshToken.for_user(user)
+        access_token = refresh.access_token
+        
+        return Response({
+            "user": self.serializer_class(user).data,
+            "access": str(access_token),
+            "refresh": str(refresh)
+        }, status=status.HTTP_200_OK)
 
     # GET /api/users/me/
     @action(detail=False, methods=["get"], url_path="me")
