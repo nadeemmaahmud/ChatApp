@@ -7,9 +7,9 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-q^(vmebz0od=x(e6t@7c0(i83=d220ki(@o!dgn*jgvqxr@349')
-DEBUG = os.environ.get('DEBUG', 'True').lower() == 'true'
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
+SECRET_KEY = os.environ.get('SECRET_KEY')
+DEBUG = False
+ALLOWED_HOSTS = ["*"]
 
 INSTALLED_APPS = [
     'channels',
@@ -86,7 +86,7 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': True,
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=3600),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
 }
 

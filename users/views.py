@@ -43,11 +43,11 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         
-        if not user.is_verified:
+        '''if not user.is_verified:
             return Response(
                 {"detail": "Account not verified"}, 
                 status=status.HTTP_403_FORBIDDEN
-            )
+            )'''
         
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
