@@ -3,83 +3,120 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from .models import Message
-from users.models import CustomUser
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # Check if user is authenticated
-        user = self.scope["user"]
-        if isinstance(user, AnonymousUser):
-            # Reject connection for unauthenticated users
-            await self.close(code=4001)  # Custom close code for authentication error
-            return
-        
         self.room_name = self.scope['url_route']['kwargs']['room_name']
         self.room_group_name = f'chat_{self.room_name}'
         
-        # Join room group
+        user = self.scope.get("user", AnonymousUser())
+        
+        print(f"🔗 WebSocket connection attempt for room: {self.room_name}")
+        print(f"👤 User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
+        
+        # For development, allow anonymous users (comment this out in production)
+        if isinstance(user, AnonymousUser):
+            print("⚠️ Anonymous user connecting - allowing for development")
+            # await self.close(code=4001)  # Uncomment this line for production
+            # return
+        
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
         
-        # Send welcome message
+        print(f"✅ Connection accepted for room: {self.room_name}")
+        
         await self.send(text_data=json.dumps({
             'type': 'connection_established',
-            'message': f'Welcome {user.email}! You are now connected to {self.room_name}',
-            'user': user.email
+            'message': f'Welcome! You are now connected to room: {self.room_name}',
+            'user': user.email if hasattr(user, 'email') else 'Anonymous',
+            'room': self.room_name
         }))
+        
+        # Send message history only for authenticated users
+        if not isinstance(user, AnonymousUser):
+            await self.send_message_history()
 
     async def disconnect(self, close_code):
-        # Leave room group
         if hasattr(self, 'room_group_name'):
             await self.channel_layer.group_discard(self.room_group_name, self.channel_name)
 
     async def receive(self, text_data):
         try:
-            data = json.loads(text_data)
-            user = self.scope["user"]
-            
-            # Check if user is still authenticated
-            if isinstance(user, AnonymousUser):
+            if not text_data or text_data.strip() == "":
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Authentication required'
+                    'message': 'Empty message received'
                 }))
                 return
             
-            message = data.get('message', '').strip()
+            if isinstance(text_data, bytes):
+                text_data = text_data.decode('utf-8')
+            
+            try:
+                data = json.loads(text_data)
+            except json.JSONDecodeError:
+                if text_data.strip().startswith('{') and text_data.strip().endswith('}'):
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': 'Malformed JSON'
+                    }))
+                    return
+                else:
+                    data = {'message': text_data.strip()}
+            
+            user = self.scope.get("user", AnonymousUser())
+            
+            print(f"📨 Received message from user: {user.email if hasattr(user, 'email') else 'Anonymous'}")
+            
+            # For development, allow anonymous users to send messages
+            # Uncomment the following lines for production:
+            # if isinstance(user, AnonymousUser):
+            #     await self.send(text_data=json.dumps({
+            #         'type': 'error',
+            #         'message': 'Authentication required'
+            #     }))
+            #     return
+            
+            user_display = user.email if hasattr(user, 'email') else 'Anonymous'
+            
+            message = ""
+            if isinstance(data, dict):
+                message = data.get('message', '').strip()
+            elif isinstance(data, str):
+                message = data.strip()
+            else:
+                message = str(data).strip()
             
             if not message:
                 await self.send(text_data=json.dumps({
                     'type': 'error',
-                    'message': 'Message cannot be empty'
+                    'message': 'Message content cannot be empty'
                 }))
                 return
 
-            # Save message to database
-            message_obj = await self.save_message(user, self.room_name, message)
+            # Save message to database (only if user is authenticated)
+            message_obj = None
+            if not isinstance(user, AnonymousUser):
+                message_obj = await self.save_message(user, self.room_name, message)
+                print(f"💾 Message saved with ID: {message_obj.id}")
 
-            # Send message to room group
             await self.channel_layer.group_send(
                 self.room_group_name,
                 {
                     'type': 'chat_message',
                     'message': message,
-                    'username': user.email,
-                    'user_id': user.id,
-                    'timestamp': message_obj.timestamp.isoformat(),
-                    'message_id': message_obj.id
+                    'username': user_display,
+                    'user_id': user.id if hasattr(user, 'id') else None,
+                    'timestamp': message_obj.timestamp.isoformat() if message_obj else None,
+                    'message_id': message_obj.id if message_obj else None
                 }
             )
             
-        except json.JSONDecodeError:
-            await self.send(text_data=json.dumps({
-                'type': 'error',
-                'message': 'Invalid message format'
-            }))
         except Exception as e:
+            print(f"❌ Error in receive method: {e}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
-                'message': 'An error occurred while processing your message'
+                'message': 'Server error occurred'
             }))
 
     async def chat_message(self, event):
@@ -96,3 +133,30 @@ class ChatConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def save_message(self, user, room_name, message):
         return Message.objects.create(user=user, room_name=room_name, content=message)
+
+    @database_sync_to_async
+    def get_recent_messages(self, room_name, limit=20):
+        messages = Message.objects.filter(
+            room_name=room_name
+        ).select_related('user').order_by('-timestamp')[:limit]
+        return list(reversed(messages))
+
+    async def send_message_history(self):
+        try:
+            recent_messages = await self.get_recent_messages(self.room_name)
+            
+            if recent_messages:
+                await self.send(text_data=json.dumps({
+                    'type': 'message_history',
+                    'messages': [
+                        {
+                            'id': msg.id,
+                            'message': msg.content,
+                            'username': msg.user.email,
+                            'user_id': msg.user.id,
+                            'timestamp': msg.timestamp.isoformat()
+                        } for msg in recent_messages
+                    ]
+                }))
+        except Exception:
+            pass
