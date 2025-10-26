@@ -159,17 +159,38 @@ CHANNEL_LAYERS = {
     },
 }
 
-# Email Configuration for Gmail
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
-EMAIL_HOST_USER = 'nadeemmaahmud@gmail.com'
-EMAIL_HOST_PASSWORD = 'ckqupqhyegidybjm'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-DEFAULT_FROM_EMAIL = 'nadeemmaahmud@gmail.com'
-
-# Console fallback (uncomment if Gmail still fails)
-# EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
-# DEFAULT_FROM_EMAIL = 'nadeemmaahmud@gmail.com'
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 SITE_URL = "http://127.0.0.1:8000"
+
+STRIPE_PUBLISHABLE_KEY = os.environ.get('STRIPE_PUBLISHABLE_KEY')
+STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
+
+SUBSCRIPTION_PLANS = {
+    'pro_1_month': {
+        'price': 9.99,
+        'stripe_price_id': 'price_1month_pro',
+        'duration_months': 1,
+    },
+    'pro_3_months': {
+        'price': 24.99,
+        'stripe_price_id': 'price_3months_pro',
+        'duration_months': 3,
+    },
+    'pro_6_months': {
+        'price': 44.99,
+        'stripe_price_id': 'price_6months_pro',
+        'duration_months': 6,
+    },
+    'pro_1_year': {
+        'price': 79.99,
+        'stripe_price_id': 'price_1year_pro',
+        'duration_months': 12,
+    },
+}
