@@ -26,7 +26,6 @@ class CustomUserManager(BaseUserManager):
 
         return self.create_user(email, password, **extra_fields)
 
-
 class CustomUser(AbstractBaseUser, PermissionsMixin):
     email = models.EmailField(unique=True)
     first_name = models.CharField(max_length=50, blank=True)
@@ -62,3 +61,21 @@ class EmailVerificationToken(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.token}"
+
+class PasswordResetToken(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name="password_reset_tokens")
+    token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(blank=True, null=True)
+
+    def save(self, *args, **kwargs):
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(hours=1)
+        return super().save(*args, **kwargs)
+
+    @property
+    def is_expired(self):
+        return timezone.now() > self.expires_at
+
+    def __str__(self):
+        return f"{self.user.email} - Password Reset - {self.token}"

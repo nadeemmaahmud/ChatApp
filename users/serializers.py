@@ -29,3 +29,47 @@ class CustomUserSerializer(serializers.ModelSerializer):
             user.set_password(password)
         user.save()
         return user
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(
+        required=True,
+        style={'input_type': 'password'}
+    )
+    new_password = serializers.CharField(
+        required=True,
+        style={'input_type': 'password'}
+    )
+    confirm_new_password = serializers.CharField(
+        required=True,
+        style={'input_type': 'password'}
+    )
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_new_password']:
+            raise serializers.ValidationError({"new_password": "New passwords didn't match"})
+        return data
+
+    def validate_current_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("Current password is incorrect")
+        return value
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField(required=True)
+
+class ResetPasswordSerializer(serializers.Serializer):
+    token = serializers.CharField(required=True)
+    new_password = serializers.CharField(
+        required=True,
+        style={'input_type': 'password'}
+    )
+    confirm_new_password = serializers.CharField(
+        required=True,
+        style={'input_type': 'password'}
+    )
+
+    def validate(self, data):
+        if data['new_password'] != data['confirm_new_password']:
+            raise serializers.ValidationError({"new_password": "Passwords didn't match"})
+        return data

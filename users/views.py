@@ -1,12 +1,18 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from .models import CustomUser, EmailVerificationToken
-from .serializers import CustomUserSerializer
+from .models import CustomUser, EmailVerificationToken, PasswordResetToken
+from .serializers import (
+    CustomUserSerializer, 
+    ChangePasswordSerializer, 
+    ForgotPasswordSerializer, 
+    ResetPasswordSerializer
+)
 from .permissions import IsAdminUserOrOthers
-from .utils import send_verification_email
+from .utils import send_verification_email, send_password_reset_email
 from django.contrib.auth import authenticate
 from rest_framework_simplejwt.tokens import RefreshToken
+from django.utils import timezone
 
 class CustomUserViewSet(viewsets.ModelViewSet):
     queryset = CustomUser.objects.all()
@@ -17,9 +23,9 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         elif self.action == "list":
             return [permissions.IsAdminUser()]
-        elif self.action in ["send_verification", "me"]:
+        elif self.action in ["send_verification", "me", "change_password"]:
             return [permissions.IsAuthenticated()]
-        elif self.action == "verify":
+        elif self.action in ["verify", "forgot_password", "reset_password"]:
             return [permissions.AllowAny()]
         else:
             return [IsAdminUserOrOthers()]
@@ -42,12 +48,6 @@ class CustomUserViewSet(viewsets.ModelViewSet):
                 {"detail": "Invalid credentials"}, 
                 status=status.HTTP_401_UNAUTHORIZED
             )
-        
-        '''if not user.is_verified:
-            return Response(
-                {"detail": "Account not verified"}, 
-                status=status.HTTP_403_FORBIDDEN
-            )'''
         
         refresh = RefreshToken.for_user(user)
         access_token = refresh.access_token
@@ -91,42 +91,62 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         EmailVerificationToken.objects.filter(user=user).delete()
         return Response({"detail": "Account verified"}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=["post"], url_path="change-password")
+    def change_password(self, request):
+        serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            user = request.user
+            user.set_password(serializer.validated_data['new_password'])
+            user.save()
+            return Response({"detail": "Password changed successfully"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-from rest_framework.views import APIView
+    @action(detail=False, methods=["post"], url_path="forgot-password")
+    def forgot_password(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            email = serializer.validated_data['email']
+            try:
+                user = CustomUser.objects.get(email=email)
+                success = send_password_reset_email(user)
+                if success:
+                    return Response(
+                        {"detail": "Password reset email sent successfully"}, 
+                        status=status.HTTP_200_OK
+                    )
+                else:
+                    return Response(
+                        {"detail": "Failed to send password reset email"}, 
+                        status=status.HTTP_502_BAD_GATEWAY
+                    )
+            except CustomUser.DoesNotExist:
+                return Response(
+                    {"detail": "If an account with this email exists, a password reset link has been sent"}, 
+                    status=status.HTTP_200_OK
+                )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class LoginUserView(APIView):
-    permission_classes = [permissions.AllowAny]
-    
-    def post(self, request):
-        email = request.data.get('email')
-        password = request.data.get('password')
-        
-        if not email or not password:
-            return Response(
-                {"detail": "Email and password are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        user = authenticate(request, username=email, password=password)
-        
-        if not user:
-            return Response(
-                {"detail": "Invalid credentials"}, 
-                status=status.HTTP_401_UNAUTHORIZED
-            )
-        
-        refresh = RefreshToken.for_user(user)
-        access_token = refresh.access_token
-        
-        return Response({
-            "success": True,
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "first_name": user.first_name,
-                "last_name": user.last_name,
-                "is_verified": user.is_verified
-            },
-            "access": str(access_token),
-            "refresh": str(refresh)
-        }, status=status.HTTP_200_OK)
+    @action(detail=False, methods=["post"], url_path="reset-password")
+    def reset_password(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+        if serializer.is_valid():
+            token_value = serializer.validated_data['token']
+            new_password = serializer.validated_data['new_password']
+            
+            try:
+                token = PasswordResetToken.objects.select_related("user").get(token=token_value)
+            except PasswordResetToken.DoesNotExist:
+                return Response({"detail": "Invalid reset token"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            if token.is_expired:
+                token.delete()
+                return Response({"detail": "Reset token has expired"}, status=status.HTTP_400_BAD_REQUEST)
+            
+            user = token.user
+            user.set_password(new_password)
+            user.save()
+            
+            PasswordResetToken.objects.filter(user=user).delete()
+            
+            return Response({"detail": "Password reset successfully"}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

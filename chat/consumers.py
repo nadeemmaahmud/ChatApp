@@ -3,7 +3,6 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from .models import Message
-from subscriptions.models import MessageUsage, Subscription
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -156,53 +155,19 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     ]
                 }))
         except Exception:
-            pass
+            return
 
     @database_sync_to_async
     def check_message_limit(self, user):
-        try:
-            usage, created = MessageUsage.objects.get_or_create(user=user)
-            return usage.can_send_message()
-        except Exception as e:
-            print(f"Error checking message limit: {e}")
-            return True
+        return True
 
     @database_sync_to_async
     def increment_message_usage(self, user):
-        try:
-            usage, created = MessageUsage.objects.get_or_create(user=user)
-            usage.increment_message_count()
-        except Exception as e:
-            print(f"Error incrementing message usage: {e}")
+        return
 
     @database_sync_to_async
     def get_user_message_status(self, user):
-        try:
-            usage, created = MessageUsage.objects.get_or_create(user=user)
-            usage.reset_daily_count()
-            
-            status = {
-                'messages_sent_today': usage.messages_sent_today,
-                'can_send_message': usage.can_send_message(),
-                'subscription_type': 'basic'
-            }
-            
-            try:
-                subscription = user.subscription
-                if subscription.is_active and not subscription.is_expired:
-                    status['subscription_type'] = 'pro'
-                    status['subscription_plan'] = subscription.plan.name
-                    status['days_remaining'] = subscription.days_remaining
-                    if subscription.plan.message_limit == -1:
-                        status['remaining_messages'] = 'unlimited'
-                    else:
-                        status['remaining_messages'] = max(0, subscription.plan.message_limit - usage.messages_sent_today)
-                else:
-                    status['remaining_messages'] = max(0, 50 - usage.messages_sent_today)
-            except Subscription.DoesNotExist:
-                status['remaining_messages'] = max(0, 50 - usage.messages_sent_today)
-            
-            return status
-        except Exception as e:
-            print(f"Error getting user message status: {e}")
-            return {'can_send_message': True, 'subscription_type': 'basic'}
+        return {
+            'can_send_message': True,
+            'subscription_type': 'unlimited'
+        }

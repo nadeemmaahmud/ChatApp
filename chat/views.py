@@ -15,21 +15,18 @@ class ChatRoomViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def join(self, request, pk=None):
-        """Join a chat room"""
         room = self.get_object()
         room.participants.add(request.user)
         return Response({'detail': f'Joined room: {room.display_name}'})
 
     @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
-        """Leave a chat room"""
         room = self.get_object()
         room.participants.remove(request.user)
         return Response({'detail': f'Left room: {room.display_name}'})
 
     @action(detail=False, methods=['get'])
     def my_rooms(self, request):
-        """Get rooms where user is a participant"""
         rooms = ChatRoom.objects.filter(participants=request.user).order_by('-created_at')
         serializer = self.get_serializer(rooms, many=True)
         return Response(serializer.data)
@@ -80,7 +77,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='room/(?P<room_name>[^/.]+)')
     def room_messages(self, request, room_name=None):
-        """Get messages for a specific room"""
         messages = Message.objects.filter(room_name=room_name).order_by('timestamp')
         page = self.paginate_queryset(messages)
         if page is not None:
@@ -92,7 +88,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def my_messages(self, request):
-        """Get current user's messages"""
         messages = Message.objects.filter(user=request.user).order_by('-timestamp')
         page = self.paginate_queryset(messages)
         if page is not None:

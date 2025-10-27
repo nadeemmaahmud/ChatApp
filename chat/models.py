@@ -38,7 +38,6 @@ class Message(models.Model):
         return f'[{self.timestamp}] {self.user}: {self.content}'
 
     def save(self, *args, **kwargs):
-        # Auto-create or link to ChatRoom
         if not self.room and self.room_name:
             room, created = ChatRoom.objects.get_or_create(
                 name=self.room_name,

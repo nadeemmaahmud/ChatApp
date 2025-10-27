@@ -10,6 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
+CSRF_TRUSTED_ORIGINS = ["https://c16588dfd620.ngrok-free.app", "http://127.0.0.1:8001"]
 
 INSTALLED_APPS = [
     'channels',
@@ -24,7 +25,6 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt.token_blacklist',
     'users',
     'chat',
-    'subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -111,4 +111,3 @@ STRIPE_SECRET_KEY = os.environ.get('STRIPE_SECRET_KEY')
 STRIPE_WEBHOOK_SECRET = os.environ.get('STRIPE_WEBHOOK_SECRET')
 
 SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8001')
-SITE_URL = os.environ.get('SITE_URL', 'http://127.0.0.1:8000')
