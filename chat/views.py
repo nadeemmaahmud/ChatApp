@@ -55,7 +55,6 @@ class MessageViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:
-            # Only allow users to edit/delete their own messages
             return [permissions.IsAuthenticated()]
         return super().get_permissions()
 
@@ -66,7 +65,6 @@ class MessageViewSet(viewsets.ModelViewSet):
                 {"detail": "You can only edit your own messages."}, 
                 status=status.HTTP_403_FORBIDDEN
             )
-        # Mark as edited
         instance.is_edited = True
         instance.save(update_fields=['is_edited'])
         return super().update(request, *args, **kwargs)

@@ -6,7 +6,6 @@ from chat.routing import websocket_urlpatterns
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ChatApp.settings')
 
-# Initialize Django ASGI application early
 django_asgi_app = get_asgi_application()
 
 application = ProtocolTypeRouter({

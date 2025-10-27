@@ -13,18 +13,16 @@ class Command(BaseCommand):
         email = options['email']
         password = options['password']
         
-        # Check if user already exists
         if CustomUser.objects.filter(email=email).exists():
             self.stdout.write(
                 self.style.WARNING(f'User with email {email} already exists')
             )
             return
         
-        # Create user
         user = CustomUser.objects.create_user(
             email=email,
             password=password,
-            is_verified=True  # Set as verified for testing
+            is_verified=True
         )
         
         self.stdout.write(

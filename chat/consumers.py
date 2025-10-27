@@ -3,6 +3,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
 from django.contrib.auth.models import AnonymousUser
 from .models import Message
+from subscriptions.models import MessageUsage, Subscription
 
 class ChatConsumer(AsyncWebsocketConsumer):
     async def connect(self):
@@ -14,11 +15,8 @@ class ChatConsumer(AsyncWebsocketConsumer):
         print(f"🔗 WebSocket connection attempt for room: {self.room_name}")
         print(f"👤 User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
         
-        # For development, allow anonymous users (comment this out in production)
         if isinstance(user, AnonymousUser):
             print("⚠️ Anonymous user connecting - allowing for development")
-            # await self.close(code=4001)  # Uncomment this line for production
-            # return
         
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
@@ -32,7 +30,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             'room': self.room_name
         }))
         
-        # Send message history only for authenticated users
         if not isinstance(user, AnonymousUser):
             await self.send_message_history()
 
@@ -68,14 +65,15 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             print(f"📨 Received message from user: {user.email if hasattr(user, 'email') else 'Anonymous'}")
             
-            # For development, allow anonymous users to send messages
-            # Uncomment the following lines for production:
-            # if isinstance(user, AnonymousUser):
-            #     await self.send(text_data=json.dumps({
-            #         'type': 'error',
-            #         'message': 'Authentication required'
-            #     }))
-            #     return
+            if not isinstance(user, AnonymousUser):
+                can_send = await self.check_message_limit(user)
+                if not can_send:
+                    await self.send(text_data=json.dumps({
+                        'type': 'error',
+                        'message': 'Message limit reached. Please upgrade to Pro plan for unlimited messages.',
+                        'error_code': 'MESSAGE_LIMIT_EXCEEDED'
+                    }))
+                    return
             
             user_display = user.email if hasattr(user, 'email') else 'Anonymous'
             
@@ -94,10 +92,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }))
                 return
 
-            # Save message to database (only if user is authenticated)
             message_obj = None
             if not isinstance(user, AnonymousUser):
                 message_obj = await self.save_message(user, self.room_name, message)
+                await self.increment_message_usage(user)
                 print(f"💾 Message saved with ID: {message_obj.id}")
 
             await self.channel_layer.group_send(
@@ -120,7 +118,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
             }))
 
     async def chat_message(self, event):
-        # Send message to WebSocket
         await self.send(text_data=json.dumps({
             'type': 'chat_message',
             'message': event['message'],
@@ -160,3 +157,52 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 }))
         except Exception:
             pass
+
+    @database_sync_to_async
+    def check_message_limit(self, user):
+        try:
+            usage, created = MessageUsage.objects.get_or_create(user=user)
+            return usage.can_send_message()
+        except Exception as e:
+            print(f"Error checking message limit: {e}")
+            return True
+
+    @database_sync_to_async
+    def increment_message_usage(self, user):
+        try:
+            usage, created = MessageUsage.objects.get_or_create(user=user)
+            usage.increment_message_count()
+        except Exception as e:
+            print(f"Error incrementing message usage: {e}")
+
+    @database_sync_to_async
+    def get_user_message_status(self, user):
+        try:
+            usage, created = MessageUsage.objects.get_or_create(user=user)
+            usage.reset_daily_count()
+            
+            status = {
+                'messages_sent_today': usage.messages_sent_today,
+                'can_send_message': usage.can_send_message(),
+                'subscription_type': 'basic'
+            }
+            
+            try:
+                subscription = user.subscription
+                if subscription.is_active and not subscription.is_expired:
+                    status['subscription_type'] = 'pro'
+                    status['subscription_plan'] = subscription.plan.name
+                    status['days_remaining'] = subscription.days_remaining
+                    if subscription.plan.message_limit == -1:
+                        status['remaining_messages'] = 'unlimited'
+                    else:
+                        status['remaining_messages'] = max(0, subscription.plan.message_limit - usage.messages_sent_today)
+                else:
+                    status['remaining_messages'] = max(0, 50 - usage.messages_sent_today)
+            except Subscription.DoesNotExist:
+                status['remaining_messages'] = max(0, 50 - usage.messages_sent_today)
+            
+            return status
+        except Exception as e:
+            print(f"Error getting user message status: {e}")
+            return {'can_send_message': True, 'subscription_type': 'basic'}

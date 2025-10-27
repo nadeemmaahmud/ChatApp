@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp Subscription Demo</title>
+    <script src="https://js.stripe.com/v3/"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .plan-card {
+            border: 1px solid #ddd;
+            padding: 20px;
+            margin: 10px 0;
+            border-radius: 8px;
+        }
+        .plan-card.basic {
+            background-color: #f8f9fa;
+        }
+        .plan-card.pro {
+            background-color: #e7f3ff;
+        }
+        .plan-price {
+            font-size: 24px;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .buy-button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .buy-button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .status-section {
+            background-color: #f1f3f4;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        .error {
+            color: red;
+            margin: 10px 0;
+        }
+        .success {
+            color: green;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>ChatApp Subscription Demo</h1>
+    
+    <!-- User Status Section -->
+    <div class="status-section">
+        <h2>Your Current Status</h2>
+        <div id="userStatus">
+            <p>Loading...</p>
+        </div>
+        <button onclick="loadUserStatus()">Refresh Status</button>
+    </div>
+
+    <!-- Plans Section -->
+    <div id="plansSection">
+        <h2>Available Plans</h2>
+        <div id="plansList">
+            <p>Loading plans...</p>
+        </div>
+    </div>
+
+    <!-- Payment Form -->
+    <div id="paymentSection" style="display: none;">
+        <h2>Payment</h2>
+        <form id="payment-form">
+            <div id="card-element">
+                <!-- Stripe Elements will go here -->
+            </div>
+            <button id="submit-payment" type="submit">
+                <span id="spinner" class="spinner" style="display: none;"></span>
+                <span id="button-text">Pay Now</span>
+            </button>
+        </form>
+        <div id="payment-result"></div>
+    </div>
+
+    <script>
+        // Replace with your ngrok URL
+        const API_BASE_URL = 'https://6dc33ebe725a.ngrok-free.app/api';
+        
+        // Replace with your Stripe publishable key
+        const STRIPE_PUBLISHABLE_KEY = 'pk_test_your_publishable_key_here';
+        
+        let authToken = null;
+        let stripe = null;
+        let elements = null;
+        let cardElement = null;
+        let selectedPlan = null;
+
+        // Initialize Stripe
+        if (STRIPE_PUBLISHABLE_KEY !== 'pk_test_your_publishable_key_here') {
+            stripe = Stripe(STRIPE_PUBLISHABLE_KEY);
+            elements = stripe.elements();
+            cardElement = elements.create('card');
+            cardElement.mount('#card-element');
+        }
+
+        // Login function (for demo purposes)
+        async function login() {
+            const email = prompt('Enter your email:');
+            const password = prompt('Enter your password:');
+            
+            if (!email || !password) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/login/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    authToken = data.access;
+                    document.getElementById('userStatus').innerHTML = `
+                        <p><strong>Logged in as:</strong> ${data.user.email}</p>
+                        <button onclick="logout()">Logout</button>
+                    `;
+                    loadUserStatus();
+                    loadPlans();
+                } else {
+                    alert('Login failed');
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                alert('Login error');
+            }
+        }
+
+        // Logout function
+        function logout() {
+            authToken = null;
+            document.getElementById('userStatus').innerHTML = `
+                <p>Not logged in</p>
+                <button onclick="login()">Login</button>
+            `;
+            document.getElementById('plansSection').style.display = 'none';
+            document.getElementById('paymentSection').style.display = 'none';
+        }
+
+        // Load user subscription status
+        async function loadUserStatus() {
+            if (!authToken) {
+                document.getElementById('userStatus').innerHTML = `
+                    <p>Not logged in</p>
+                    <button onclick="login()">Login</button>
+                `;
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/subscriptions/status/`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                    }
+                });
+
+                const data = await response.json();
+                
+                let statusHtml = '<h3>Subscription Status</h3>';
+                
+                if (data.subscription) {
+                    const sub = data.subscription;
+                    statusHtml += `
+                        <p><strong>Plan:</strong> ${sub.plan_details.name}</p>
+                        <p><strong>Status:</strong> ${sub.status}</p>
+                        <p><strong>Days Remaining:</strong> ${sub.days_remaining}</p>
+                    `;
+                } else {
+                    statusHtml += '<p><strong>Plan:</strong> Basic (Free)</p>';
+                }
+
+                // Load message usage
+                const usageResponse = await fetch(`${API_BASE_URL}/subscriptions/message-usage/`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                    }
+                });
+
+                const usageData = await usageResponse.json();
+                statusHtml += `
+                    <h3>Message Usage</h3>
+                    <p><strong>Messages sent today:</strong> ${usageData.messages_sent_today}</p>
+                    <p><strong>Remaining messages:</strong> ${usageData.remaining_messages}</p>
+                    <p><strong>Can send message:</strong> ${usageData.can_send_message ? 'Yes' : 'No'}</p>
+                `;
+
+                document.getElementById('userStatus').innerHTML = statusHtml;
+                
+            } catch (error) {
+                console.error('Error loading user status:', error);
+            }
+        }
+
+        // Load available plans
+        async function loadPlans() {
+            if (!authToken) return;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/subscriptions/plans/`, {
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                    }
+                });
+
+                const plans = await response.json();
+                
+                let plansHtml = '';
+                
+                plans.forEach(plan => {
+                    const isBasic = plan.plan_type === 'basic';
+                    plansHtml += `
+                        <div class="plan-card ${plan.plan_type}">
+                            <h3>${plan.name}</h3>
+                            <div class="plan-price">$${plan.price}</div>
+                            <p><strong>Messages:</strong> ${plan.message_limit === -1 ? 'Unlimited' : plan.message_limit}</p>
+                            ${plan.duration_display ? `<p><strong>Duration:</strong> ${plan.duration_display}</p>` : ''}
+                            ${!isBasic ? `<button class="buy-button" onclick="selectPlan(${plan.id}, '${plan.name}', ${plan.price})">Choose Plan</button>` : '<p>Current Plan</p>'}
+                        </div>
+                    `;
+                });
+
+                document.getElementById('plansList').innerHTML = plansHtml;
+                document.getElementById('plansSection').style.display = 'block';
+                
+            } catch (error) {
+                console.error('Error loading plans:', error);
+            }
+        }
+
+        // Select a plan for purchase
+        function selectPlan(planId, planName, price) {
+            selectedPlan = { id: planId, name: planName, price: price };
+            
+            if (!stripe) {
+                alert('Stripe is not configured. Please add your Stripe publishable key.');
+                return;
+            }
+            
+            document.getElementById('paymentSection').style.display = 'block';
+            document.getElementById('button-text').textContent = `Pay $${price} for ${planName}`;
+        }
+
+        // Handle payment form submission
+        document.getElementById('payment-form').addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            if (!selectedPlan || !stripe) return;
+
+            const { error: submitError } = await elements.submit();
+            if (submitError) {
+                showPaymentError(submitError.message);
+                return;
+            }
+
+            try {
+                // Create payment intent
+                const response = await fetch(`${API_BASE_URL}/subscriptions/create-payment-intent/`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${authToken}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        plan_id: selectedPlan.id
+                    })
+                });
+
+                const { client_secret } = await response.json();
+
+                // Confirm payment
+                const { error } = await stripe.confirmPayment({
+                    elements,
+                    clientSecret: client_secret,
+                    confirmParams: {
+                        return_url: window.location.href,
+                    },
+                });
+
+                if (error) {
+                    showPaymentError(error.message);
+                } else {
+                    showPaymentSuccess();
+                    loadUserStatus();
+                }
+
+            } catch (error) {
+                console.error('Payment error:', error);
+                showPaymentError('Payment failed');
+            }
+        });
+
+        function showPaymentError(message) {
+            document.getElementById('payment-result').innerHTML = `<div class="error">Error: ${message}</div>`;
+        }
+
+        function showPaymentSuccess() {
+            document.getElementById('payment-result').innerHTML = `<div class="success">Payment successful! Your subscription has been activated.</div>`;
+            document.getElementById('paymentSection').style.display = 'none';
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            logout(); // Start with logout state
+        });
+    </script>
+</body>
+</html>

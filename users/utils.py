@@ -7,7 +7,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 def send_verification_email(user: CustomUser) -> bool:
-    # remove old tokens
     EmailVerificationToken.objects.filter(user=user).delete()
     token = EmailVerificationToken.objects.create(user=user)
 
