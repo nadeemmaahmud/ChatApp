@@ -1,129 +1,93 @@
-from rest_framework import viewsets, status
-from rest_framework.decorators import action
+import stripe
+from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.views import APIView
-from django.conf import settings
+from rest_framework import status
 from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
 from django.http import HttpResponse
-import stripe
-import logging
+from django.conf import settings
+from .models import Subscription
+from .serializers import CreateCheckoutSessionSerializer
 
-from .models import SubscriptionPlan, UserSubscription, MessageUsage, Payment
-from .serializers import (
-    SubscriptionPlanSerializer, 
-    UserSubscriptionSerializer, 
-    MessageUsageSerializer,
-    CreatePaymentIntentSerializer
-)
 
 stripe.api_key = settings.STRIPE_SECRET_KEY
-logger = logging.getLogger(__name__)
 
-class SubscriptionViewSet(viewsets.ViewSet):
+class CreateCheckoutSession(APIView):
     permission_classes = [IsAuthenticated]
 
-    @action(detail=False, methods=['get'])
-    def status(self, request):
-        try:
-            subscription = request.user.subscription
-            serializer = UserSubscriptionSerializer(subscription)
-            return Response(serializer.data)
-        except UserSubscription.DoesNotExist:
-            return Response({'error': 'No subscription found'}, status=404)
-
-    @action(detail=False, methods=['get'])
-    def usage(self, request):
-        try:
-            usage = request.user.message_usage
-            serializer = MessageUsageSerializer(usage)
-            return Response(serializer.data)
-        except MessageUsage.DoesNotExist:
-            return Response({'error': 'No usage data found'}, status=404)
-
-    @action(detail=False, methods=['get'])
-    def upgrade_options(self, request):
-        pro_plans = SubscriptionPlan.objects.filter(plan_type='pro', is_active=True)
-        serializer = SubscriptionPlanSerializer(pro_plans, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['post'])
-    def create_payment_intent(self, request):
-        serializer = CreatePaymentIntentSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=400)
-
-        try:
-            plan = SubscriptionPlan.objects.get(id=serializer.validated_data['plan_id'])
-            
-            payment_intent = stripe.PaymentIntent.create(
-                amount=int(plan.price * 100),
-                currency='usd',
-                metadata={
-                    'user_id': str(request.user.id),
-                    'user_email': request.user.email,
-                    'plan_id': str(plan.id),
-                    'plan_name': plan.name,
-                }
-            )
-
-            payment = Payment.objects.create(
-                user=request.user,
-                stripe_payment_intent_id=payment_intent.id,
-                amount=plan.price,
-                plan=plan
-            )
-
-            return Response({
-                'client_secret': payment_intent.client_secret,
-                'payment_id': payment.id,
-                'amount': plan.price,
-                'plan_name': plan.name,
-            })
-
-        except Exception as e:
-            return Response({'error': 'Payment creation failed'}, status=500)
-
-@method_decorator(csrf_exempt, name='dispatch')
-class StripeWebhookView(APIView):
-    permission_classes = []
-
     def post(self, request):
-        payload = request.body
-        sig_header = request.META.get('HTTP_STRIPE_SIGNATURE')
-        
+        username = request.user.username
         try:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+            customer = stripe.Customer.create(
+                name=username
             )
-        except:
-            return HttpResponse('Invalid signature', status=400)
-
-        if event['type'] == 'payment_intent.succeeded':
-            self._handle_payment_success(event['data']['object'])
-
-        return HttpResponse(status=200)
-
-    def _handle_payment_success(self, payment_intent):
-        try:
-            payment = Payment.objects.get(
-                stripe_payment_intent_id=payment_intent['id']
+            session = stripe.checkout.Session.create(
+                payment_method_types=['card'],
+                mode='subscription',
+                line_items=[{
+                    'price': f'{settings.STRIPE_PRICE_ID}',  # Create recurring price in Stripe dashboard for R99/month
+                    'quantity': 1,
+                }],
+                success_url='https://079d54ab7d23.ngrok-free.app/api/subscription/success/',
+                cancel_url='https://079d54ab7d23.ngrok-free.app/api/subscription/cancel/',
+                customer=customer.id,
             )
-            payment.status = 'completed'
-            payment.save()
-            
-            user_subscription = payment.user.subscription
-            user_subscription.plan = payment.plan
-            user_subscription.status = 'active'
-            user_subscription.end_date = None
-            user_subscription.save()
-            
-            if payment.plan.duration_days > 0:
-                from django.utils import timezone
-                from datetime import timedelta
-                user_subscription.end_date = timezone.now() + timedelta(days=payment.plan.duration_days)
-                user_subscription.save()
-            
-        except Payment.DoesNotExist:
-            logger.error(f"Payment not found for intent {payment_intent['id']}")
+
+            # Create or update subscription
+            sub = Subscription.objects.create(user=request.user)
+            sub.stripe_customer_id = customer.id
+            sub.save()
+            return Response({'url': session.url})
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+@csrf_exempt
+def stripe_webhook(request):
+    payload = request.body
+    sig_header = request.META['HTTP_STRIPE_SIGNATURE']
+    event = None
+
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
+        )
+    except ValueError as e:
+        return HttpResponse(status=400)
+    except stripe.error.SignatureVerificationError as e:
+        return HttpResponse(status=400)
+
+    if event.type == 'checkout.session.completed':
+        session = event.data.object
+        customer_id = session.customer
+        sub_id = session.subscription
+        # sub_id = session.get('subscription')
+        sub, created = Subscription.objects.get_or_create(stripe_customer_id=customer_id)
+        sub.stripe_subscription_id = sub_id
+        sub.is_active = True
+        sub.save()
+        # Send welcome email here (use django mail)
+
+    elif event.type == 'invoice.paid':
+        # Monthly payment success
+        # sub_id = event.data.object.subscription
+        sub_id = event.data.object.parent.subscription_details.subscription
+        sub, created = Subscription.objects.get_or_create(stripe_subscription_id=sub_id)
+        sub.subscription_length += 1
+        sub.save()
+
+    elif event.type == 'customer.subscription.deleted':
+        sub_id = event.data.object.id
+        sub, created = Subscription.objects.get_or_create(stripe_subscription_id=sub_id)
+        sub.is_active = False
+        sub.save()
+
+    else:
+        print(f"Unhandled event type: {event.type}")
+
+    return HttpResponse(status=200)
+
+def success_view(request):
+    return HttpResponse("Subscription successful! Thank you for subscribing.")
+
+def cancel_view(request):
+    return HttpResponse("Subscription canceled. You have not been charged.")

@@ -1,21 +1,25 @@
 from django.contrib import admin
-from .models import SubscriptionPlan, UserSubscription, MessageUsage, Payment
+from .models import Subscription
 
-@admin.register(SubscriptionPlan)
-class SubscriptionPlanAdmin(admin.ModelAdmin):
-    list_display = ['name', 'plan_type', 'price', 'duration_days', 'message_limit', 'is_active']
-    list_filter = ['plan_type', 'is_active']
+@admin.register(Subscription)
+class SubscriptionAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'stripe_customer_id', 'stripe_subscription_id', 'subscription_length', 'is_active', 'created_at', 'updated_at')
+    readonly_fields = ('id', 'created_at', 'updated_at')
+    search_fields = ('user__username', 'stripe_customer_id', 'stripe_subscription_id')
+    list_filter = ('is_active', 'created_at', 'updated_at')
+    ordering = ('-created_at',)
 
-@admin.register(UserSubscription)
-class UserSubscriptionAdmin(admin.ModelAdmin):
-    list_display = ['user', 'plan', 'status', 'start_date', 'end_date']
-    list_filter = ['status', 'plan']
-
-@admin.register(MessageUsage)
-class MessageUsageAdmin(admin.ModelAdmin):
-    list_display = ['user', 'daily_count', 'total_count', 'last_reset_date']
-
-@admin.register(Payment)
-class PaymentAdmin(admin.ModelAdmin):
-    list_display = ['user', 'amount', 'status', 'plan', 'created_at']
-    list_filter = ['status', 'plan']
+    fieldsets = (
+        ('Subscription Details', {
+            'fields': (
+                'id', 'user',
+                'subscription_length', 'is_active'
+            ),
+        }),
+        ('Stripe Info', {
+            'fields': ('stripe_customer_id', 'stripe_subscription_id'),
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+        }),
+    )

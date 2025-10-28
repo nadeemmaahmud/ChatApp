@@ -6,7 +6,8 @@ from .serializers import (
     CustomUserSerializer, 
     ChangePasswordSerializer, 
     ForgotPasswordSerializer, 
-    ResetPasswordSerializer
+    ResetPasswordSerializer,
+    UpdateProfileSerializer
 )
 from .permissions import IsAdminUserOrOthers
 from .utils import send_verification_email, send_password_reset_email
@@ -23,7 +24,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return [permissions.AllowAny()]
         elif self.action == "list":
             return [permissions.IsAdminUser()]
-        elif self.action in ["send_verification", "me", "change_password"]:
+        elif self.action in ["send_verification", "me", "change_password", "update_profile"]:
             return [permissions.IsAuthenticated()]
         elif self.action in ["verify", "forgot_password", "reset_password"]:
             return [permissions.AllowAny()]
@@ -61,6 +62,34 @@ class CustomUserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="me")
     def me(self, request):
         return Response(self.serializer_class(request.user).data, status=status.HTTP_200_OK)
+
+    @action(detail=False, methods=["put", "patch"], url_path="update-profile")
+    def update_profile(self, request):
+        user = request.user
+        old_email = user.email
+        serializer = UpdateProfileSerializer(user, data=request.data, partial=True)
+        
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        updated_user = serializer.save()
+        
+        if updated_user.email != old_email:
+            updated_user.is_verified = False
+            updated_user.save(update_fields=["is_verified"])
+            send_verification_email(updated_user)
+            updated_user.refresh_from_db()
+            response_data = {
+                "user": CustomUserSerializer(updated_user).data,
+                "detail": "Profile updated successfully. Please verify your new email address."
+            }
+        else:
+            response_data = {
+                "user": CustomUserSerializer(updated_user).data,
+                "detail": "Profile updated successfully."
+            }
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["post"], url_path="send-verification")
     def send_verification(self, request):

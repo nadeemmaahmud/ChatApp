@@ -1,11 +1,9 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-from .views import SubscriptionViewSet, StripeWebhookView
-
-router = DefaultRouter()
-router.register(r'subscription', SubscriptionViewSet, basename='subscription')
+from django.urls import path
+from .views import CreateCheckoutSession, stripe_webhook, success_view, cancel_view
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('webhook/', StripeWebhookView.as_view(), name='stripe-webhook'),
+    path('create-checkout-session/', CreateCheckoutSession.as_view()),
+    path('stripe-webhook/', stripe_webhook),
+    path('success/', success_view),
+    path('cancel/', cancel_view),
 ]
