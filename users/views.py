@@ -59,7 +59,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             "refresh": str(refresh)
         }, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["get"], url_path="me", permissions_classes=[permissions.IsAuthenticated()])
+    @action(detail=False, methods=["get"], url_path="me", permission_classes=[permissions.IsAuthenticated()])
     def me(self, request):
         return Response(self.serializer_class(request.user).data, status=status.HTTP_200_OK)
 
@@ -101,7 +101,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Failed to send email"}, status=status.HTTP_502_BAD_GATEWAY)
         return Response({"detail": "Verification email sent"}, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["get", "post"], url_path="verify", permissions_classes=[permissions.AllowAny()])
+    @action(detail=False, methods=["get", "post"], url_path="verify", permission_classes=[permissions.AllowAny()])
     def verify(self, request):
         token_value = request.query_params.get("token") or request.data.get("token")
         if not token_value:
@@ -120,7 +120,7 @@ class CustomUserViewSet(viewsets.ModelViewSet):
         EmailVerificationToken.objects.filter(user=user).delete()
         return Response({"detail": "Account verified"}, status=status.HTTP_200_OK)
 
-    @action(detail=False, methods=["post"], url_path="change-password", permissions_classes=[permissions.IsAuthenticated()])
+    @action(detail=False, methods=["post"], url_path="change-password", permission_classes=[permissions.IsAuthenticated()])
     def change_password(self, request):
         serializer = ChangePasswordSerializer(data=request.data, context={'request': request})
         if serializer.is_valid():
