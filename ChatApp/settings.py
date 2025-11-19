@@ -10,7 +10,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = False
 ALLOWED_HOSTS = ["*"]
-CSRF_TRUSTED_ORIGINS = ["https://34b9c396dc68.ngrok-free.app", "http://127.0.0.1:8001"]
+CSRF_TRUSTED_ORIGINS = ["https://55cff9819a1a.ngrok-free.app", "http://127.0.0.1:8001"]
 
 INSTALLED_APPS = [
     'channels',

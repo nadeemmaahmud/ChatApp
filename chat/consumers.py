@@ -11,16 +11,16 @@ class ChatConsumer(AsyncWebsocketConsumer):
         
         user = self.scope.get("user", AnonymousUser())
         
-        print(f"🔗 WebSocket connection attempt for room: {self.room_name}")
-        print(f"👤 User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
+        print(f"WebSocket connection attempt for room: {self.room_name}")
+        print(f"User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
         
         if isinstance(user, AnonymousUser):
-            print("⚠️ Anonymous user connecting - allowing for development")
+            print("Anonymous user connecting - allowing for development")
         
         await self.channel_layer.group_add(self.room_group_name, self.channel_name)
         await self.accept()
         
-        print(f"✅ Connection accepted for room: {self.room_name}")
+        print(f"Connection accepted for room: {self.room_name}")
         
         await self.send(text_data=json.dumps({
             'type': 'connection_established',
@@ -62,7 +62,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             
             user = self.scope.get("user", AnonymousUser())
             
-            print(f"📨 Received message from user: {user.email if hasattr(user, 'email') else 'Anonymous'}")
+            print(f"Received message from user: {user.email if hasattr(user, 'email') else 'Anonymous'}")
             
             if not isinstance(user, AnonymousUser):
                 can_send = await self.check_message_limit(user)
@@ -95,7 +95,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             if not isinstance(user, AnonymousUser):
                 message_obj = await self.save_message(user, self.room_name, message)
                 await self.increment_message_usage(user)
-                print(f"💾 Message saved with ID: {message_obj.id}")
+                print(f"Message saved with ID: {message_obj.id}")
 
             await self.channel_layer.group_send(
                 self.room_group_name,
@@ -110,7 +110,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             )
             
         except Exception as e:
-            print(f"❌ Error in receive method: {e}")
+            print(f"Error in receive method: {e}")
             await self.send(text_data=json.dumps({
                 'type': 'error',
                 'message': 'Server error occurred'

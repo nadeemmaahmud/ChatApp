@@ -26,15 +26,15 @@ class JWTAuthMiddleware(BaseMiddleware):
         query_params = parse_qs(query_string)
         token = query_params.get('token', [None])[0]
         
-        print(f"🔐 JWT Middleware - Query string: {query_string}")
-        print(f"🔑 JWT Middleware - Token present: {'Yes' if token else 'No'}")
+        print(f"JWT Middleware - Query string: {query_string}")
+        print(f"JWT Middleware - Token present: {'Yes' if token else 'No'}")
         
         if token:
             user = await get_user_from_token(token)
             scope['user'] = user
-            print(f"👤 JWT Middleware - User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
+            print(f"JWT Middleware - User: {user.email if hasattr(user, 'email') else 'Anonymous'}")
         else:
             scope['user'] = AnonymousUser()
-            print("👤 JWT Middleware - No token, setting anonymous user")
+            print("JWT Middleware - No token, setting anonymous user")
         
         return await super().__call__(scope, receive, send)
