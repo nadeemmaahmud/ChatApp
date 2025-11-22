@@ -58,6 +58,15 @@ class CustomUserViewSet(viewsets.ModelViewSet):
             "access": str(access_token),
             "refresh": str(refresh)
         }, status=status.HTTP_200_OK)
+    
+    @action(detail=False, methods=["post"], url_path="register", permission_classes=[permissions.AllowAny()])
+    def register(self, request):
+        serializer = self.serializer_class(data=request.data)
+        if serializer.is_valid():
+            user = serializer.save()
+            send_verification_email(user)
+            return Response(self.serializer_class(user).data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=["get"], url_path="me", permission_classes=[permissions.IsAuthenticated()])
     def me(self, request):

@@ -159,15 +159,49 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def check_message_limit(self, user):
-        return True
+        """Check if user can send a message based on their subscription"""
+        try:
+            from payments.models import MessageUsage
+            message_usage, created = MessageUsage.objects.get_or_create(user=user)
+            return message_usage.can_send_message()
+        except Exception as e:
+            print(f"Error checking message limit: {e}")
+            return True
 
     @database_sync_to_async
     def increment_message_usage(self, user):
-        return
+        """Increment message usage count for the user"""
+        try:
+            from payments.models import MessageUsage
+            message_usage, created = MessageUsage.objects.get_or_create(user=user)
+            message_usage.increment_usage()
+        except Exception as e:
+            print(f"Error incrementing message usage: {e}")
 
     @database_sync_to_async
     def get_user_message_status(self, user):
-        return {
-            'can_send_message': True,
-            'subscription_type': 'unlimited'
-        }
+        """Get user's message sending status and subscription info"""
+        try:
+            from payments.models import MessageUsage, UserSubscription
+            message_usage, created = MessageUsage.objects.get_or_create(user=user)
+            
+            subscription_type = 'free'
+            try:
+                subscription = UserSubscription.objects.get(user=user)
+                if subscription.is_active_subscription():
+                    subscription_type = subscription.plan.plan_type
+            except UserSubscription.DoesNotExist:
+                pass
+            
+            return {
+                'can_send_message': message_usage.can_send_message(),
+                'subscription_type': subscription_type,
+                'daily_count': message_usage.daily_count,
+                'remaining_messages': message_usage.get_remaining_messages(),
+            }
+        except Exception as e:
+            print(f"Error getting user message status: {e}")
+            return {
+                'can_send_message': True,
+                'subscription_type': 'unknown'
+            }

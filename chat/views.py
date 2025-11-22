@@ -48,7 +48,17 @@ class MessageViewSet(viewsets.ModelViewSet):
         return MessageSerializer
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        from payments.models import MessageUsage
+        from rest_framework.exceptions import ValidationError, PermissionDenied
+        
+        user = self.request.user
+        message_usage, created = MessageUsage.objects.get_or_create(user=user)
+        
+        if not message_usage.can_send_message():
+            raise PermissionDenied(detail="Message limit exceeded. Please upgrade to Pro plan.")
+            
+        serializer.save(user=user)
+        message_usage.increment_usage()
 
     def get_permissions(self):
         if self.action in ['update', 'partial_update', 'destroy']:

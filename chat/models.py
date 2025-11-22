@@ -39,17 +39,7 @@ class Message(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.pk:
-            try:
-                from payments.models import MessageUsage
-                message_usage, created = MessageUsage.objects.get_or_create(user=self.user)
-                if not message_usage.can_send_message():
-                    from django.core.exceptions import ValidationError
-                    raise ValidationError("Message limit exceeded. Please upgrade to Pro plan.")
-                message_usage.increment_usage()
-            except ImportError:
-                pass
-            except Exception:
-                pass
+            pass
         
         if not self.room and self.room_name:
             room, created = ChatRoom.objects.get_or_create(
