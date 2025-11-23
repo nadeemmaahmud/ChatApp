@@ -8,6 +8,7 @@ urlpatterns = [
     path('api/chat/', include('chat.urls')),
     path('api/payments/', include('payments.urls')),
     path('payment/', include('payments.urls')),
+    path('api/calls/', include('calls.urls')),
     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair_view'),
     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh_view'),
 ]

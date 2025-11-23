@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'users',
     'chat',
     'payments',
+    'calls',
 ]
 
 MIDDLEWARE = [
